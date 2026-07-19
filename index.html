@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Box Quality Estimator - Real-time Classifier</title>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <!-- TensorFlow.js Library -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <style>
+        :root {
+            --bg-color: #0d0d12;
+            --card-bg: rgba(255, 255, 255, 0.03);
+            --border-color: rgba(255, 255, 255, 0.06);
+            --primary: #9d4edd;
+            --success: #10b981;
+            --danger: #ef4444;
+            --text-main: #f3f4f6;
+            --text-muted: #9ca3af;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            font-family: 'Outfit', sans-serif;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 40px 20px;
+            overflow-x: hidden;
+            background: radial-gradient(circle at top left, #1e1b4b, var(--bg-color) 60%);
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        header h1 {
+            font-size: 2.5rem;
+            font-weight: 800;
+            background: linear-gradient(to right, #c084fc, #6366f1);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 10px;
+        }
+
+        header p {
+            color: var(--text-muted);
+            font-size: 1.1rem;
+        }
+
+        .container {
+            display: flex;
+            flex-direction: row;
+            gap: 30px;
+            max-width: 1100px;
+            width: 100%;
+            justify-content: center;
+            align-items: flex-start;
+        }
+
+        @media (max-width: 800px) {
+            .container {
+                flex-direction: column;
+                align-items: center;
+            }
+        }
+
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            backdrop-filter: blur(16px);
+            border-radius: 24px;
+            padding: 24px;
+            width: 100%;
+            max-width: 500px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+        }
+
+        .video-wrapper {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 1;
+            border-radius: 16px;
+            overflow: hidden;
+            background: #000;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .status-badge {
+            position: absolute;
+            top: 15px;
+            left: 15px;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(8px);
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--danger);
+        }
+
+        .status-dot.active {
+            background: var(--success);
+            box-shadow: 0 0 8px var(--success);
+        }
+
+        .btn {
+            margin-top: 20px;
+            width: 100%;
+            padding: 14px;
+            border: none;
+            border-radius: 12px;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            background: linear-gradient(135deg, #a855f7, #6366f1);
+            color: white;
+            box-shadow: 0 4px 12px rgba(168, 85, 247, 0.3);
+        }
+
+        .btn:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .results-card {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .result-title {
+            font-size: 1.3rem;
+            font-weight: 600;
+            margin-bottom: 10px;
+            align-self: flex-start;
+        }
+
+        .prediction-box {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            background: rgba(255, 255, 255, 0.02);
+            padding: 16px;
+            border-radius: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.03);
+        }
+
+        .prediction-row {
+            display: flex;
+            justify-content: space-between;
+            font-weight: 600;
+        }
+
+        .bar-container {
+            width: 100%;
+            height: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .bar-fill {
+            height: 100%;
+            width: 0%;
+            transition: width 0.1s ease-out;
+            border-radius: 4px;
+        }
+
+        .bar-fill.broken {
+            background: var(--danger);
+        }
+
+        .bar-fill.correct {
+            background: var(--success);
+        }
+
+        #loading-message {
+            color: var(--text-muted);
+            font-size: 0.95rem;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>📦 Box Quality Estimator</h1>
+        <p>Real-time client-side box defect detector</p>
+    </header>
+
+    <div class="container">
+        <!-- Camera Section -->
+        <div class="card">
+            <div class="video-wrapper">
+                <div class="status-badge">
+                    <div id="status-dot" class="status-dot"></div>
+                    <span id="status-text">Model Loading...</span>
+                </div>
+                <video id="webcam" autoplay playsinline muted></video>
+            </div>
+            <button id="camera-btn" class="btn" disabled>Start Analysis</button>
+        </div>
+
+        <!-- Result Section -->
+        <div class="card results-card">
+            <div class="result-title">🔍 Real-time Analytics</div>
+            
+            <div class="prediction-box">
+                <div class="prediction-row">
+                    <span>Correct Box</span>
+                    <span id="correct-pct">0%</span>
+                </div>
+                <div class="bar-container">
+                    <div id="correct-bar" class="bar-fill correct"></div>
+                </div>
+            </div>
+
+            <div class="prediction-box">
+                <div class="prediction-row">
+                    <span>Broken Box</span>
+                    <span id="broken-pct">0%</span>
+                </div>
+                <div class="bar-container">
+                    <div id="broken-bar" class="bar-fill broken"></div>
+                </div>
+            </div>
+
+            <div id="loading-message">
+                Webcam access will be requested once the model is loaded.
+            </div>
+        </div>
+    </div>
+
+    <!-- Hidden canvas for capturing frames -->
+    <canvas id="canvas" width="150" height="150" style="display: none;"></canvas>
+
+    <script>
+        const video = document.getElementById('webcam');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const cameraBtn = document.getElementById('camera-btn');
+        const statusDot = document.getElementById('status-dot');
+        const statusText = document.getElementById('status-text');
+        const loadingMessage = document.getElementById('loading-message');
+
+        const correctPct = document.getElementById('correct-pct');
+        const correctBar = document.getElementById('correct-bar');
+        const brokenPct = document.getElementById('broken-pct');
+        const brokenBar = document.getElementById('broken-bar');
+
+        let model;
+        let isPredicting = false;
+
+        // Load the converted TF.js model
+        async function loadModel() {
+            try {
+                // Expects tfjs_model folder in the same root
+                model = await tf.loadLayersModel('./tfjs_model/model.json');
+                statusDot.classList.add('active');
+                statusText.innerText = 'Model Ready';
+                cameraBtn.disabled = false;
+                loadingMessage.innerText = 'Model loaded successfully. Click "Start Analysis" to begin.';
+            } catch (error) {
+                console.error(error);
+                statusText.innerText = 'Load Error';
+                loadingMessage.innerText = 'Failed to load model. Ensure the "tfjs_model" directory is uploaded correctly.';
+            }
+        }
+
+        // Access the webcam stream
+        async function setupWebcam() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: 'environment' },
+                    audio: false
+                });
+                video.srcObject = stream;
+                return new Promise((resolve) => {
+                    video.onloadedmetadata = () => {
+                        resolve();
+                    };
+                });
+            } catch (error) {
+                alert('Could not access camera. Please allow permission.');
+                throw error;
+            }
+        }
+
+        // Preprocess frame and run prediction
+        async function predictFrame() {
+            if (!isPredicting) return;
+
+            // Draw video frame to hidden canvas resized to 150x150
+            ctx.drawImage(video, 0, 0, 150, 150);
+
+            // Convert canvas image to tensor
+            const tensor = tf.browser.fromPixels(canvas)
+                .toFloat()
+                .div(tf.scalar(255.0))
+                .expandDims();
+
+            // Run prediction
+            const predictions = await model.predict(tensor).data();
+
+            // Match labels: index 0 = broken box, index 1 = correct box
+            const brokenProb = predictions[0];
+            const correctProb = predictions[1];
+
+            // Update UI
+            correctPct.innerText = `${(correctProb * 100).toFixed(1)}%`;
+            correctBar.style.width = `${correctProb * 100}%`;
+
+            brokenPct.innerText = `${(brokenProb * 100).toFixed(1)}%`;
+            brokenBar.style.width = `${brokenProb * 100}%`;
+
+            // Call next frame
+            requestAnimationFrame(predictFrame);
+        }
+
+        cameraBtn.addEventListener('click', async () => {
+            if (!isPredicting) {
+                try {
+                    await setupWebcam();
+                    isPredicting = true;
+                    cameraBtn.innerText = 'Stop Analysis';
+                    loadingMessage.innerText = 'Analyzing live feed...';
+                    predictFrame();
+                } catch (e) {
+                    console.error(e);
+                }
+            } else {
+                isPredicting = false;
+                cameraBtn.innerText = 'Start Analysis';
+                loadingMessage.innerText = 'Analysis paused.';
+                const stream = video.srcObject;
+                if (stream) {
+                    const tracks = stream.getTracks();
+                    tracks.forEach(track => track.stop());
+                }
+            }
+        });
+
+        // Initialize
+        loadModel();
+    </script>
+</body>
+</html>
