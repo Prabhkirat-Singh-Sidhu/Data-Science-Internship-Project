@@ -1,4 +1,4 @@
-# Facial Emotion Recognition Web App
+# Broken Box Recognition Web App
 
 This project is a real-time, in-browser facial emotion recognition application. It uses a custom Convolutional Neural Network (CNN) model built with Keras and converted to TensorFlow.js to run inference directly in the browser, entirely client-side.
 
